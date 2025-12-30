@@ -1,0 +1,39 @@
+name: Auto Collect Stock Data
+
+on:
+  schedule:
+    # 매일 한국 시간 오전 9시 30분 (UTC 0:30)
+    - cron: '30 0 * * *'
+  workflow_dispatch:  # 수동 실행 가능
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        pip install requests pandas openpyxl
+    
+    - name: Collect stock data
+      run: |
+        # 옵션 2 자동 선택 (기본 + 상세)
+        echo "2" | python naver_stock_collector_final.py
+    
+    - name: Commit and push
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add data/
+        git diff --quiet && git diff --staged --quiet || git commit -m "Auto update stock data - $(date +'%Y-%m-%d')"
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
