@@ -1,5 +1,5 @@
 """
-네이버증권 상승종목 최종 개선판
+네이버증권 상승종목
 - 시장경보구분 매핑
 - 뉴스/공시/IR 하이퍼링크 (별도 컬럼)
 - Excel 출력
@@ -15,7 +15,7 @@ from openpyxl.styles import Font
 
 
 class NaverStockCollectorFinal:
-    """네이버증권 상승종목 최종판 수집 클래스"""
+    """네이버증권 상승종목 수집 클래스"""
 
     def __init__(self):
         self.base_url = "https://stock.naver.com/api/domestic/market/stock/default"
@@ -187,12 +187,19 @@ class NaverStockCollectorFinal:
             response.raise_for_status()
             data = response.json()
 
+            # 종목설명 1,2,3 합치기
+            descriptions = []
+            for i in range(1, 4):
+                desc = data.get(f'comment{i}', '')
+                if desc:
+                    descriptions.append(desc)
+
             return {
                 '업종': data.get('upJongName', ''),
-                '설명': data.get('comment1', '')
+                '종목설명': ' '.join(descriptions)
             }
         except:
-            return {'업종': '', '설명': ''}
+            return {'업종': '', '종목설명': ''}
 
     def get_recent_news(self, stock_code, months=3, max_news=3):
         """뉴스 조회 (링크 포함)"""
@@ -318,37 +325,45 @@ class NaverStockCollectorFinal:
 
         return ir_list
 
-    def collect_all_data(self, max_stocks=100, include_detail=True, include_news=True):
-        """전체 데이터 수집"""
+    def collect_all_data(self, max_stocks=1000, include_detail=True, include_news=True):
+        """전체 데이터 수집 (자동으로 모든 상승종목 수집)"""
         all_data = []
         start_idx = 0
         page_size = 100
+        total_collected = 0
 
-        # 1. 기본 데이터
-        while start_idx < max_stocks:
-            print(f"\n[INFO] {start_idx+1}~{start_idx+page_size} 수집 중...")
+        print(f"\n[INFO] 상승종목 수집 시작 (최대 {max_stocks}개)")
+
+        # 1. 기본 데이터 - 빈 결과가 나올 때까지 계속 수집
+        while total_collected < max_stocks:
+            print(f"[INFO] {start_idx+1}~{start_idx+page_size} 수집 중...")
             df = self.get_rising_stocks(page_size=page_size, start_idx=start_idx)
 
             if df.empty:
+                print(f"[INFO] 더 이상 데이터가 없습니다.")
                 break
 
             all_data.append(df)
+            total_collected += len(df)
 
+            # 받은 데이터가 page_size보다 적으면 마지막 페이지
             if len(df) < page_size:
+                print(f"[INFO] 마지막 페이지 도달")
                 break
 
             start_idx += page_size
             time.sleep(0.5)
 
         if not all_data:
+            print("[ERROR] 수집된 데이터가 없습니다.")
             return pd.DataFrame()
 
         result_df = pd.concat(all_data, ignore_index=True)
-        print(f"\n[SUCCESS] {len(result_df)}개 기본 데이터 수집 완료")
+        print(f"\n[SUCCESS] 총 {len(result_df)}개 상승종목 수집 완료")
 
         # 2. 상세정보
         if include_detail:
-            print(f"\n[INFO] 상세정보 수집 중...")
+            print(f"\n[INFO] 상세정보(업종/설명) 수집 중...")
             details = []
             for idx, row in result_df.iterrows():
                 detail = self.get_stock_detail(row['종목코드'])
@@ -364,7 +379,7 @@ class NaverStockCollectorFinal:
 
         # 3. 뉴스/공시/IR (각각 별도 컬럼으로)
         if include_news:
-            print(f"\n[INFO] 뉴스/공시/IR 수집 중...")
+            print(f"\n[INFO] 뉴스/공시/IR 수집 중... (시간이 걸립니다)")
 
             for idx, row in result_df.iterrows():
                 stock_code = row['종목코드']
@@ -481,25 +496,26 @@ class NaverStockCollectorFinal:
 
 def main():
     """메인 실행"""
-    print("네이버증권 상승종목 최종판\n")
+    print("네이버증권 종목분석\n")
 
     collector = NaverStockCollectorFinal()
 
     print("="*80)
     print("수집 옵션")
     print("="*80)
-    print("1. 기본 (~10초)")
-    print("2. 기본+상세 (~2분)")
-    print("3. 완전판 (~5분) - 뉴스/공시/IR 포함")
+    print("1. 기본 (~10초) - 가격/재무 정보만")
+    print("2. 기본+상세 (~5분) - 업종/종목설명 포함")
+    print("3. 전체 (~15분) - 뉴스/공시/IR 포함")
+    print("\n※ 모든 상승종목을 자동으로 수집합니다 (100개 이상 가능)")
 
     choice = input("\n선택 (1/2/3, 기본=2): ").strip() or "2"
 
     include_detail = choice in ["2", "3"]
     include_news = choice == "3"
 
-    # 수집
+    # 수집 (자동으로 모든 상승종목 수집)
     df = collector.collect_all_data(
-        max_stocks=500,
+        max_stocks=1000,  # 최대 1000개까지 (보통 100~300개)
         include_detail=include_detail,
         include_news=include_news
     )
@@ -508,10 +524,12 @@ def main():
         # 저장
         filepath = collector.save_to_excel_with_hyperlinks(df)
 
-        print(f"\n완료! {filepath}")
+        print(f"\n 완료 {filepath}")
+        print(f"   총 {len(df)}개 종목 수집")
         print("\n[참고] 뉴스/공시 제목을 클릭하면 링크로 이동합니다.")
+        print("[참고] 대시보드 실행: streamlit run stock_dashboard.py")
     else:
-        print("\n수집 실패!")
+        print("\n수집 실패")
 
 
 if __name__ == "__main__":
