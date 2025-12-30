@@ -50,18 +50,30 @@ st.markdown("""
 @st.cache_data
 def load_latest_data():
     """최신 데이터 파일 로드"""
-    data_files = glob.glob('data/rising_stocks_*.xlsx')
-    
-    if not data_files:
-        return None, None
-    
-    latest_file = max(data_files, key=os.path.getctime)
-    df = pd.read_excel(latest_file, sheet_name='상승종목')
-    
-    # 날짜 추출
-    file_date = os.path.basename(latest_file).replace('rising_stocks_', '').replace('.xlsx', '')
-    
-    return df, file_date
+    try:
+        # data 폴더 확인
+        if not os.path.exists('data'):
+            return None, None, "data 폴더가 없습니다."
+        
+        data_files = glob.glob('data/rising_stocks_*.xlsx')
+        
+        if not data_files:
+            return None, None, "Excel 파일이 없습니다."
+        
+        latest_file = max(data_files, key=os.path.getctime)
+        
+        try:
+            df = pd.read_excel(latest_file, sheet_name='상승종목')
+        except Exception as e:
+            return None, None, f"Excel 파일 읽기 실패: {str(e)}"
+        
+        # 날짜 추출
+        file_date = os.path.basename(latest_file).replace('rising_stocks_', '').replace('.xlsx', '')
+        
+        return df, file_date, None
+        
+    except Exception as e:
+        return None, None, f"오류 발생: {str(e)}"
 
 
 def main():
@@ -69,14 +81,35 @@ def main():
     st.markdown('<div class="main-header">📈 상승종목 대시보드</div>', unsafe_allow_html=True)
     
     # 데이터 로드
-    df, file_date = load_latest_data()
+    df, file_date, error = load_latest_data()
     
     if df is None:
-        st.error("❌ 데이터 파일이 없습니다. 먼저 데이터를 수집하세요.")
-        st.info("실행: python naver_stock_collector_final.py")
+        st.error(f"❌ 데이터 로드 실패: {error}")
+        
+        st.info("""
+        **해결 방법:**
+        
+        1. 먼저 데이터를 수집하세요:
+        ```bash
+        python naver_stock_collector_final.py
+        ```
+        
+        2. `data/` 폴더에 Excel 파일이 있는지 확인하세요.
+        
+        3. Streamlit Cloud 배포 시:
+           - GitHub에 `data/` 폴더와 Excel 파일을 함께 업로드하세요.
+           - 또는 GitHub Actions로 자동 수집하세요.
+        """)
+        
+        # 샘플 데이터로 데모 표시 (선택)
+        if st.button("📊 샘플 데이터로 데모 보기"):
+            st.warning("샘플 데이터 기능은 준비 중입니다.")
+        
         return
     
     st.success(f"✅ 데이터 로드 완료: {file_date}")
+    
+    # 나머지 코드...
     
     # 사이드바
     with st.sidebar:
