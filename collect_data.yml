@@ -26,7 +26,7 @@ jobs:
     - name: Collect stock data
       run: |
         # 옵션 2 자동 선택 (기본 + 상세)
-        echo "2" | python naver_stock_collector_final.py
+        echo "2" | python stock list naver.py
     
     - name: Commit and push
       run: |
